@@ -448,13 +448,39 @@ function IdentitySection({ char, save, viewMode }: { char: Character; save: (pat
 }
 
 function GallerySection({ char, imageURLs, handleFiles, save, viewMode }: { char: Character; imageURLs: Record<string, string>; handleFiles: (files: FileList | null) => void; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  const [lightboxId, setLightboxId] = useState<string | null>(null)
+
+  const openLightbox = (id: string) => setLightboxId(id)
+  const closeLightbox = () => setLightboxId(null)
+
+  const removeImage = async (id: string) => {
+    // remove from images table and from character refs
+    try {
+      await db.images.delete(id)
+    } catch (err) {
+      console.error('Failed to delete image blob', err)
+    }
+    const updated = char.images.filter(r => r.id !== id)
+    save({ images: updated })
+    if (lightboxId === id) closeLightbox()
+  }
+
   return (
     <div className="space-y-3">
       {!viewMode && <input type="file" multiple onChange={e => handleFiles(e.target.files)} className="mt-2" />}
       <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
         {char.images.map(ref => (
-          <div key={ref.id} className="border rounded overflow-hidden">
-            {imageURLs[ref.id] ? <img src={imageURLs[ref.id]} alt="" className="w-full h-28 object-cover" /> : <div className="w-full h-28 bg-slate-900" />}
+          <div key={ref.id} className="relative border rounded overflow-hidden bg-slate-900">
+            {imageURLs[ref.id] ? (
+              <img onClick={() => openLightbox(ref.id)} src={imageURLs[ref.id]} alt={ref.caption || ''} className="w-full h-28 object-cover cursor-zoom-in" />
+            ) : (
+              <div className="w-full h-28 bg-slate-900" />
+            )}
+
+            {!viewMode && (
+              <button onClick={e => { e.stopPropagation(); removeImage(ref.id) }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm">×</button>
+            )}
+
             <div className="p-2">
               {viewMode ? (
                 <p className="text-xs text-white">{ref.caption}</p>
@@ -465,6 +491,23 @@ function GallerySection({ char, imageURLs, handleFiles, save, viewMode }: { char
           </div>
         ))}
       </div>
+
+      {lightboxId && (
+        <div onClick={closeLightbox} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div onClick={e => e.stopPropagation()} className="max-w-4xl max-h-[90vh] w-full">
+            <div className="flex justify-between items-start mb-2">
+              <button onClick={closeLightbox} className="text-white bg-slate-800 px-3 py-1 rounded">Close</button>
+              {!viewMode && <button onClick={() => removeImage(lightboxId)} className="text-white bg-red-600 px-3 py-1 rounded">Remove from gallery</button>}
+            </div>
+            <div className="w-full h-full flex items-center justify-center">
+              {imageURLs[lightboxId] ? <img src={imageURLs[lightboxId]} alt="" className="max-h-[80vh] max-w-full object-contain rounded" /> : <div className="w-full h-96 bg-slate-900" />}
+            </div>
+            <div className="mt-2 text-white text-sm">
+              {char.images.find(r => r.id === lightboxId)?.caption}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
