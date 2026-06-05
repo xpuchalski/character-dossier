@@ -11,121 +11,13 @@ const DEFAULT_SECTION_ORDER = ['identity', 'gallery', 'biography', 'custom', 're
 
 const DEFAULT_THEME: ThemeSettings = {
   primaryColor: '#ffffff',
-  secondaryColor: '#d1d5db',
-  accentColor: '#ffffff',
+  secondaryColor: '#000000',
+  accentColor: '#241f31',
   backgroundColor: '#000000',
   textColor: '#ffffff'
 }
 
-const DEFAULT_CUSTOM_CSS = `/* Dark theme base */
-:root {
-  --primary-color: #ffffff;
-  --secondary-color: #d1d5db;
-  --accent-color: #ffffff;
-  --background-color: #000000;
-  --text-color: #ffffff;
-}
-
-html, body, #root {
-  height: 100%;
-  background: var(--background-color) !important;
-  color: var(--text-color) !important;
-}
-
-.theme-root {
-  background: var(--background-color) !important;
-  color: var(--text-color) !important;
-}
-
-.theme-root * {
-  color: var(--text-color) !important;
-}
-
-.theme-root h1, .theme-root h2, .theme-root h3, .theme-root h4 {
-  color: var(--accent-color) !important;
-}
-
-body {
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Form elements */
-button, input, textarea, select {
-  color: inherit;
-  background: transparent;
-  font: inherit;
-}
-
-/* Inputs, selects, textareas */
-input, textarea, select {
-  background: #070709 !important;
-  border: 1px solid #2b2b2b !important;
-  color: var(--text-color) !important;
-  border-radius: 0.5rem !important;
-  padding: 0.45rem 0.6rem !important;
-}
-
-input::placeholder, textarea::placeholder {
-  color: #9ca3af !important;
-}
-
-/* Buttons */
-button {
-  background: #0b0b0d;
-  color: var(--text-color);
-  border: 1px solid #1f2937;
-  padding: 0.45rem 0.7rem;
-  border-radius: 0.5rem;
-  cursor: pointer;
-}
-
-button:hover {
-  filter: brightness(1.05);
-}
-
-/* Headers and titles */
-h1, h2, h3, h4 {
-  color: var(--primary-color) !important;
-}
-
-/* Accents - try using secondary and accent colors */
-.character-card {
-  border: 1px solid var(--accent-color) !important;
-  background: var(--secondary-color) !important;
-  color: var(--text-color) !important;
-  border-radius: 0.75rem;
-  padding: 1rem;
-}
-
-.character-header {
-  font-weight: 700;
-  color: var(--primary-color) !important;
-}
-
-.character-section {
-  margin-top: 1rem;
-  border-left: 3px solid var(--accent-color) !important;
-  padding-left: 1rem;
-}
-
-/* Scrollbars */
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-thumb {
-  background: var(--secondary-color) !important;
-  border-radius: 8px;
-}
-
-*::-webkit-scrollbar-track {
-  background: var(--background-color) !important;
-}
-`
+const DEFAULT_CUSTOM_CSS = ''
 
 function mapRelationshipToColor(type: string) {
   switch (type) {
@@ -671,27 +563,14 @@ function ThemeSection({ char, save, viewMode }: { char: Character; save: (patch:
     let presetTheme: ThemeSettings
     let presetCss: string
     if (name === 'high-contrast') {
-      presetTheme = { primaryColor: '#ffffff', secondaryColor: '#ffd400', accentColor: '#ffd400', backgroundColor: '#000000', textColor: '#ffffff' }
-      presetCss = `body { background: var(--background-color) !important; color: var(--text-color) !important; }
-.character-card { border: 2px solid var(--accent-color) !important; }
-.character-header { color: var(--primary-color) !important; font-weight: 700; }
-h1, h2, h3, h4 { color: var(--accent-color) !important; }
-`
+      presetTheme = { primaryColor: '#ffffff', secondaryColor: '#111111', accentColor: '#ffd400', backgroundColor: '#000000', textColor: '#ffffff' }
+      presetCss = ''
     } else if (name === 'paper') {
-      presetTheme = { primaryColor: '#111111', secondaryColor: '#6b7280', accentColor: '#111111', backgroundColor: '#ffffff', textColor: '#111111' }
-      presetCss = `body { background: var(--background-color) !important; color: var(--text-color) !important; }
-.character-card { border: 1px solid var(--secondary-color) !important; }
-.character-header { color: var(--primary-color) !important; font-weight: 700; }
-h1, h2, h3, h4 { color: var(--primary-color) !important; }
-`
+      presetTheme = { primaryColor: '#111111', secondaryColor: '#e5e7eb', accentColor: '#2563eb', backgroundColor: '#ffffff', textColor: '#2563eb' }
+      presetCss = ''
     } else {
-      presetTheme = { primaryColor: '#ffffff', secondaryColor: '#d1d5db', accentColor: '#ffffff', backgroundColor: '#000000', textColor: '#ffffff' }
-      presetCss = `body { background: var(--background-color) !important; color: var(--text-color) !important; }
-.character-card { border: 1px solid var(--secondary-color) !important; border-radius: 0.75rem; padding: 1rem; }
-.character-header { color: var(--primary-color) !important; font-weight: 700; }
-h1, h2, h3, h4 { color: var(--primary-color) !important; }
-.character-section { border-left: 3px solid var(--accent-color) !important; padding-left: 1rem; }
-`
+      presetTheme = { primaryColor: '#ffffff', secondaryColor: '#000000', accentColor: '#241f31', backgroundColor: '#000000', textColor: '#ffffff' }
+      presetCss = ''
     }
     save({ theme: presetTheme, customCss: presetCss })
   }
@@ -717,7 +596,7 @@ h1, h2, h3, h4 { color: var(--primary-color) !important; }
       <div>
         <h3 className="font-semibold mb-2 text-white">Custom CSS</h3>
         <p className="text-xs text-gray-400 mb-2">Available CSS variables: --primary-color, --secondary-color, --accent-color, --background-color, --text-color</p>
-        <textarea value={char.customCss || ''} disabled={viewMode} onChange={e => save({ customCss: e.target.value })} className="w-full min-h-[160px] p-2 border rounded font-mono text-xs" placeholder="body { background: var(--background-color); }" />
+        <textarea value={char.customCss || ''} disabled={viewMode} onChange={e => save({ customCss: e.target.value })} className="w-full min-h-[160px] p-2 border rounded font-mono text-xs" />
       </div>
     </div>
   )

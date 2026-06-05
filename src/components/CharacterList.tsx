@@ -28,29 +28,12 @@ export default function CharacterList({ characters, onSelect, selectedId, onRefr
       sectionCols: {},
       theme: {
         primaryColor: '#ffffff',
-        secondaryColor: '#d1d5db',
-        accentColor: '#ffffff',
+        secondaryColor: '#000000',
+        accentColor: '#241f31',
         backgroundColor: '#000000',
         textColor: '#ffffff'
       },
-      customCss: `body {
-  background: #000000;
-  color: #ffffff;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.6;
-}
-.character-card {
-  border: 1px solid #374151;
-  border-radius: 0.75rem;
-  padding: 1rem;
-}
-.character-header {
-  font-weight: 700;
-}
-.character-section {
-  margin-top: 1rem;
-}
-`,
+      customCss: '',
       createdAt: now,
       updatedAt: now
     }

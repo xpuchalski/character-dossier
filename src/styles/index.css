@@ -105,6 +105,12 @@ h1, h2, h3, h4 { color: #ffffff !important; }
 /* Ensure react-flow canvas uses pure black for consistency */
 .react-flow, .react-flow__pane { background: #000000 !important; }
 
+/* ReactFlow node text should use theme text color */
+.react-flow__node {
+  color: var(--text-color) !important;
+  background-color: var(--accent-color) !important;
+}
+
 /* Custom CSS editor styling */
 textarea.font-mono { background: #0b0b0d !important; color: #e6eef3 !important; }
 
