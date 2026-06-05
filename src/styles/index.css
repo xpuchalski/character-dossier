@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-color: #ffffff;
+  --secondary-color: #d1d5db;
+  --accent-color: #ffffff;
+  --background-color: #000000;
+  --text-color: #ffffff;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--background-color) !important;
+  color: var(--text-color) !important;
+}
+
+.theme-root {
+  background: var(--background-color) !important;
+  color: var(--text-color) !important;
+}
+
+.theme-root * {
+  color: var(--text-color) !important;
+}
+
+.theme-root .character-card {
+  border-color: var(--accent-color) !important;
+  background: var(--secondary-color) !important;
+  color: var(--text-color) !important;
+}
+
+.theme-root .character-header {
+  color: var(--primary-color) !important;
+}
+
+.theme-root .character-section {
+  border-left-color: var(--accent-color) !important;
+}
+
+.theme-root h1, .theme-root h2, .theme-root h3, .theme-root h4 {
+  color: var(--accent-color) !important;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Base form/button behavior: inherit color, transparent by default */
+button, input, textarea, select {
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+/* Remove residual blue tints from utility classes */
+a, .text-blue-600, .bg-blue-600 { color: #ffffff !important; background-color: transparent !important; }
+
+/* Make common slate backgrounds pure black variants for contrast */
+.bg-slate-950 { background-color: #000000 !important; }
+.bg-slate-900 { background-color: #06060a !important; }
+.bg-slate-800 { background-color: #0d0d10 !important; }
+.hover\:bg-slate-800:hover { background-color: #0d0d10 !important; }
+.hover\:bg-slate-50:hover { background-color: rgba(255,255,255,0.03) !important; }
+
+/* Borders — subtle, desaturated */
+.border-slate-700 { border-color: #1f2937 !important; }
+
+/* Inputs, selects, textareas */
+input, textarea, select {
+  background: #070709 !important;
+  border: 1px solid #2b2b2b !important;
+  color: #ffffff !important;
+  border-radius: 0.5rem !important;
+  padding: 0.45rem 0.6rem !important;
+}
+input::placeholder, textarea::placeholder { color: #9ca3af !important; }
+
+/* Buttons: consistent, rounded, subtle border */
+button {
+  background: #0b0b0d;
+  color: #ffffff;
+  border: 1px solid #1f2937;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.05); }
+button.text-red-600, .text-red-600 { color: #ff5c5c !important; }
+
+/* Make generic borders and rounded feel softer */
+.border { border-width: 1px !important; border-style: solid !important; border-color: #111 !important; }
+.rounded { border-radius: 0.6rem !important; }
+.shadow-sm { box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important; }
+
+/* Section headers and titles should always be bright and legible */
+h1, h2, h3, h4 { color: #ffffff !important; }
+
+/* Slightly desaturate collapsed/placeholder text */
+.section-collapsed { opacity: 0.75; color: #9ca3af; }
+
+/* Ensure react-flow canvas uses pure black for consistency */
+.react-flow, .react-flow__pane { background: #000000 !important; }
+
+/* Custom CSS editor styling */
+textarea.font-mono { background: #0b0b0d !important; color: #e6eef3 !important; }
+
+/* Dark scrollbars */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 8px; }
+*::-webkit-scrollbar-track { background: #000000; }
+
+/* Gentle spacing for section containers to reduce blockiness */
+.space-y-4 > * { padding-left: 0.25rem; padding-right: 0.25rem; }
+

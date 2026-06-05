@@ -1,0 +1,775 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { db, Character, ImageRef, Section, Relationship, TimelineEvent, IdentityField, ThemeSettings } from '../lib/db'
+import { PDFDocument, StandardFonts } from 'pdf-lib'
+import ReactFlow, { MiniMap, Controls } from 'reactflow'
+import 'reactflow/dist/style.css'
+
+const DEFAULT_SECTION_ORDER = ['identity', 'gallery', 'biography', 'custom', 'relationships', 'timeline', 'theme']
+
+const DEFAULT_THEME: ThemeSettings = {
+  primaryColor: '#ffffff',
+  secondaryColor: '#d1d5db',
+  accentColor: '#ffffff',
+  backgroundColor: '#000000',
+  textColor: '#ffffff'
+}
+
+const DEFAULT_CUSTOM_CSS = `/* Dark theme base */
+:root {
+  --primary-color: #ffffff;
+  --secondary-color: #d1d5db;
+  --accent-color: #ffffff;
+  --background-color: #000000;
+  --text-color: #ffffff;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--background-color) !important;
+  color: var(--text-color) !important;
+}
+
+.theme-root {
+  background: var(--background-color) !important;
+  color: var(--text-color) !important;
+}
+
+.theme-root * {
+  color: var(--text-color) !important;
+}
+
+.theme-root h1, .theme-root h2, .theme-root h3, .theme-root h4 {
+  color: var(--accent-color) !important;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Form elements */
+button, input, textarea, select {
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+/* Inputs, selects, textareas */
+input, textarea, select {
+  background: #070709 !important;
+  border: 1px solid #2b2b2b !important;
+  color: var(--text-color) !important;
+  border-radius: 0.5rem !important;
+  padding: 0.45rem 0.6rem !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Buttons */
+button {
+  background: #0b0b0d;
+  color: var(--text-color);
+  border: 1px solid #1f2937;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.05);
+}
+
+/* Headers and titles */
+h1, h2, h3, h4 {
+  color: var(--primary-color) !important;
+}
+
+/* Accents - try using secondary and accent colors */
+.character-card {
+  border: 1px solid var(--accent-color) !important;
+  background: var(--secondary-color) !important;
+  color: var(--text-color) !important;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.character-header {
+  font-weight: 700;
+  color: var(--primary-color) !important;
+}
+
+.character-section {
+  margin-top: 1rem;
+  border-left: 3px solid var(--accent-color) !important;
+  padding-left: 1rem;
+}
+
+/* Scrollbars */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--secondary-color) !important;
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--background-color) !important;
+}
+`
+
+function mapRelationshipToColor(type: string) {
+  switch (type) {
+    case 'Friend': return '#3b82f6'
+    case 'Family': return '#10b981'
+    case 'Rival': return '#ef4444'
+    case 'Romantic': return '#ec4899'
+    case 'Enemy': return '#f97316'
+    default: return '#94a3b8'
+  }
+}
+
+function defaultIdentityFields(): IdentityField[] {
+  return [
+    { id: crypto.randomUUID(), key: 'birthday', label: 'Birthday', value: '', removable: true },
+    { id: crypto.randomUUID(), key: 'age', label: 'Age', value: '', removable: true },
+    { id: crypto.randomUUID(), key: 'gender', label: 'Gender', value: '', removable: true },
+    { id: crypto.randomUUID(), key: 'pronouns', label: 'Pronouns', value: '', removable: true },
+    { id: crypto.randomUUID(), key: 'species', label: 'Species', value: '', removable: true },
+    { id: crypto.randomUUID(), key: 'occupation', label: 'Occupation', value: '', removable: true }
+  ]
+}
+
+function makeBasicInfo(fields: IdentityField[]) {
+  return fields.reduce((acc, field) => ({ ...acc, [field.key]: field.value }), {} as Record<string, string>)
+}
+
+export default function CharacterEditor({ id, onChange }: { id: string; onChange?: () => void }) {
+  const [char, setChar] = useState<Character | null>(null)
+  const viewMode = false
+  const [nameInput, setNameInput] = useState('')
+  const [originalSpans, setOriginalSpans] = useState<Record<string, number> | null>(null)
+  const [affectedSections, setAffectedSections] = useState<Set<string>>(new Set())
+  const [sectionDirections, setSectionDirections] = useState<Record<string, 'up' | 'down'>>({})
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      const c = await db.characters.get(id)
+      if (!mounted || !c) return
+      setChar({
+        ...c,
+        sectionOrder: c.sectionOrder || DEFAULT_SECTION_ORDER,
+        sectionCollapsed: c.sectionCollapsed || {},
+        sectionCols: c.sectionCols || {},
+        theme: c.theme || DEFAULT_THEME,
+        identityFields: c.identityFields || defaultIdentityFields(),
+        customCss: c.customCss || DEFAULT_CUSTOM_CSS
+      })
+    })()
+    return () => { mounted = false }
+  }, [id])
+
+  useEffect(() => {
+    if (!char) return
+    setNameInput(char.name || '')
+  }, [char?.name])
+
+  useEffect(() => {
+    const styleId = 'character-custom-css'
+    let style = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!style) {
+      style = document.createElement('style')
+      style.id = styleId
+      document.head.appendChild(style)
+    }
+    
+    // Build CSS with theme variables
+    const themeVars = char ? `
+:root {
+  --primary-color: ${char.theme.primaryColor};
+  --secondary-color: ${char.theme.secondaryColor};
+  --accent-color: ${char.theme.accentColor};
+  --background-color: ${char.theme.backgroundColor};
+  --text-color: ${char.theme.textColor};
+}
+` : ''
+    
+    style.textContent = themeVars + (char?.customCss || '')
+    return () => {
+      style?.remove()
+    }
+  }, [char?.customCss, char?.theme])
+
+  const save = async (patch: Partial<Character>) => {
+    if (!char) return
+    const next: Character = {
+      ...char,
+      ...patch,
+      basicInfo: makeBasicInfo(patch.identityFields ?? char.identityFields),
+      updatedAt: new Date()
+    }
+    await db.characters.put(next)
+    setChar(next)
+    onChange?.()
+  }
+
+  const [imageURLs, setImageURLs] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let mounted = true
+    const load = async () => {
+      if (!char) { setImageURLs({}); return }
+      const map: Record<string, string> = {}
+      for (const ref of char.images) {
+        const blobRec = await db.images.get(ref.id)
+        if (blobRec) {
+          map[ref.id] = URL.createObjectURL(blobRec.blob)
+        }
+      }
+      if (mounted) setImageURLs(map)
+    }
+    load()
+    return () => { mounted = false; Object.values(imageURLs).forEach(URL.revokeObjectURL) }
+  }, [char?.images])
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || !char) return
+    const addedRefs: ImageRef[] = []
+    for (const f of Array.from(files)) {
+      const id = crypto.randomUUID()
+      await db.images.add({ id, characterId: char.id, blob: f, caption: '', createdAt: new Date() })
+      addedRefs.push({ id, caption: '' })
+    }
+    save({ images: [...char.images, ...addedRefs] })
+  }
+
+  const importJSON = async (file: File | null) => {
+    if (!file) return
+    const text = await file.text()
+    const parsed = JSON.parse(text)
+    if (!parsed.id) parsed.id = crypto.randomUUID()
+    parsed.createdAt = new Date(parsed.createdAt || Date.now())
+    parsed.updatedAt = new Date()
+    await db.characters.put(parsed)
+    alert('Imported')
+  }
+
+  const exportJSON = () => {
+    if (!char) return
+    const blob = new Blob([JSON.stringify(char, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${char.name || 'character'}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportPDF = async () => {
+    if (!char) return
+    const pdfDoc = await PDFDocument.create()
+    const page = pdfDoc.addPage()
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+    const { height } = page.getSize()
+    page.drawText(char.name || 'Untitled', { x: 50, y: height - 60, size: 24, font })
+    page.drawText(char.biography.slice(0, 1500) || '', { x: 50, y: height - 100, size: 14, font })
+    const pdfBytes = await pdfDoc.save()
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${char.name || 'character'}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const sensors = useSensors(useSensor(PointerSensor))
+
+  const handleSectionDragStart = (event: any) => {
+    if (!char) return
+    // Save original spans before any changes
+    const originalSpanData: Record<string, number> = {}
+    char.sectionOrder.forEach(id => {
+      originalSpanData[id] = char.sectionCols?.[id] ?? 1
+    })
+    setOriginalSpans(originalSpanData)
+    setAffectedSections(new Set())
+  }
+
+  const handleSectionDragCancel = () => {
+    // Revert affected sections to their original spans
+    if (originalSpans && affectedSections.size > 0) {
+      const reverted: Record<string, number> = {}
+      affectedSections.forEach(id => {
+        reverted[id] = originalSpans[id]
+      })
+      save({ sectionCols: { ...char?.sectionCols, ...reverted } })
+    }
+    setOriginalSpans(null)
+    setAffectedSections(new Set())
+  }
+
+  const calculateAutoSpans = (draggedId: string, newOrder: string[], currentSpans: Record<string, number>): { spans: Record<string, number>; affected: Set<string> } => {
+    const insertIndex = newOrder.indexOf(draggedId)
+    const affectedIds = new Set<string>([draggedId])
+    
+    // Only resize if there are adjacent sections
+    const hasAdjacent = (insertIndex > 0) || (insertIndex < newOrder.length - 1)
+    
+    if (!hasAdjacent) {
+      // If isolated, keep full-width
+      return { spans: { [draggedId]: 1 }, affected: new Set([draggedId]) }
+    }
+    
+    // Add adjacent sections only if they exist
+    if (insertIndex > 0) {
+      affectedIds.add(newOrder[insertIndex - 1])
+    }
+    if (insertIndex < newOrder.length - 1) {
+      affectedIds.add(newOrder[insertIndex + 1])
+    }
+    
+    // Get neighbor spans to preserve alignment
+    const neighborIds = Array.from(affectedIds).filter(id => id !== draggedId)
+    const neighborSpans = neighborIds.map(id => currentSpans[id] ?? 1)
+    
+    // If all neighbors share the same span, preserve it (keeps grouped sections together)
+    let targetSpan = 1
+    if (neighborSpans.length > 0 && neighborSpans.every(s => s === neighborSpans[0])) {
+      targetSpan = neighborSpans[0]
+    } else {
+      // Calculate based on count
+      targetSpan = Math.min(3, affectedIds.size)
+    }
+    
+    const newSpans: Record<string, number> = {}
+    affectedIds.forEach(id => {
+      newSpans[id] = targetSpan
+    })
+    
+    return { spans: newSpans, affected: affectedIds }
+  }
+
+  const handleSectionDragEnd = (event: any) => {
+    if (!char) return
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = char.sectionOrder.indexOf(active.id)
+    const newIndex = char.sectionOrder.indexOf(over.id)
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const newOrder = arrayMove(char.sectionOrder, oldIndex, newIndex)
+      const { spans: autoSpans, affected } = calculateAutoSpans(active.id, newOrder, char.sectionCols || {})
+      setAffectedSections(affected)
+      save({ 
+        sectionOrder: newOrder,
+        sectionCols: { ...char.sectionCols, ...autoSpans }
+      })
+    }
+  }
+
+  const cycleColSpan = (sectionId: string) => {
+    if (!char) return
+    const cur = char.sectionCols?.[sectionId] ?? 1
+    const dir = sectionDirections[sectionId] ?? 'up'
+    
+    let next: number
+    let newDir: 'up' | 'down' = dir
+    
+    if (dir === 'up') {
+      if (cur === 1) next = 2
+      else if (cur === 2) next = 3
+      else next = 2 // at 3, switch direction to down
+      if (next === 3) newDir = 'down'
+    } else { // down
+      if (cur === 3) next = 2
+      else if (cur === 2) next = 1
+      else next = 2 // at 1, switch direction to up
+      if (next === 1) newDir = 'up'
+    }
+    
+    setSectionDirections(prev => ({ ...prev, [sectionId]: newDir }))
+    save({ sectionCols: { ...char.sectionCols, [sectionId]: next } })
+  }
+
+  if (!char) {
+    return <div className="p-4 text-white">Loading character…</div>
+  }
+
+  const sectionLabels: Record<string, string> = {
+    identity: 'Identity',
+    gallery: 'Gallery',
+    biography: 'Biography',
+    relationships: 'Relationship Map',
+    timeline: 'Timeline',
+    custom: 'Custom Sections',
+    theme: 'Appearance / CSS Editor'
+  }
+
+  const toggleSectionCollapse = (sectionId: string) => {
+    if (!char) return
+    save({ sectionCollapsed: { ...char.sectionCollapsed, [sectionId]: !char.sectionCollapsed?.[sectionId] } })
+  }
+
+  const isSectionCollapsed = (id: string) => char.sectionCollapsed?.[id] ?? false
+
+  const wrappedStyle = {
+    backgroundColor: char.theme.backgroundColor,
+    color: char.theme.textColor
+  }
+
+  return (
+    <div className="space-y-4 theme-root" style={wrappedStyle}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1" />
+
+        <div className="flex-1 flex items-center justify-center">
+          <input
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={async () => { if (!char) return; if (nameInput !== char.name) await save({ name: nameInput }) }}
+            onKeyDown={async e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() } }}
+            className="text-2xl font-bold p-2 rounded bg-white text-black mx-auto max-w-3xl text-center"
+          />
+        </div>
+
+        <div className="flex-1 flex justify-end gap-2">
+          <button onClick={exportJSON} className="px-3 py-2 rounded bg-slate-800 text-white">Export JSON</button>
+          <label className="px-3 py-2 rounded bg-slate-800 cursor-pointer text-white">
+            Import JSON
+            <input type="file" accept="application/json" className="hidden" onChange={e => importJSON(e.target.files?.[0] ?? null)} />
+          </label>
+        </div>
+      </div>
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleSectionDragStart} onDragCancel={handleSectionDragCancel} onDragEnd={handleSectionDragEnd}>
+        <SortableContext items={char.sectionOrder} strategy={verticalListSortingStrategy}>
+          <div className="flex flex-wrap gap-4">
+            {char.sectionOrder.map(sectionId => {
+              const span = Math.max(1, Math.min(3, char.sectionCols?.[sectionId] ?? 1))
+              const widthStyle = span === 1 
+                ? { width: '100%' } 
+                : span === 2 
+                ? { width: 'calc(50% - 0.5rem)' }
+                : { width: 'calc(33.333% - 0.667rem)' }
+              return (
+                <div key={sectionId} style={widthStyle}>
+                  <SortableSection
+                    id={sectionId}
+                    title={sectionLabels[sectionId]}
+                    viewMode={viewMode}
+                    collapsed={isSectionCollapsed(sectionId)}
+                    onToggle={() => toggleSectionCollapse(sectionId)}
+                    span={span}
+                    onToggleSpan={() => cycleColSpan(sectionId)}
+                  >
+                    {sectionId === 'identity' && <IdentitySection char={char} save={save} viewMode={viewMode} />}
+                    {sectionId === 'gallery' && <GallerySection char={char} imageURLs={imageURLs} handleFiles={handleFiles} save={save} viewMode={viewMode} />}
+                    {sectionId === 'biography' && <BiographySection char={char} save={save} viewMode={viewMode} />}
+                    {sectionId === 'relationships' && <RelationshipsSection char={char} save={save} viewMode={viewMode} />}
+                    {sectionId === 'timeline' && <TimelineSection char={char} save={save} viewMode={viewMode} />}
+                    {sectionId === 'custom' && <CustomSectionsSection char={char} save={save} viewMode={viewMode} />}
+                    {sectionId === 'theme' && <ThemeSection char={char} save={save} viewMode={viewMode} />}
+                  </SortableSection>
+                </div>
+              )
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  )
+}
+
+function SortableSection({ id, title, viewMode, collapsed, onToggle, span, onToggleSpan, children }: { id: string; title: string; viewMode: boolean; collapsed: boolean; onToggle: () => void; span?: number; onToggleSpan?: () => void; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1
+  }
+  const spanClass = `col-span-${span ?? 1}`
+
+  return (
+    <div ref={setNodeRef} style={style} className={`${spanClass} character-card border border-slate-700 rounded bg-slate-950 p-4 shadow-sm`}>
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <div className="flex items-center gap-2">
+          {!viewMode && (
+            <button {...attributes} {...listeners} className="p-1 rounded bg-slate-800 text-white">☰</button>
+          )}
+          <h2 className="text-xl font-semibold text-white character-header">{title}</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {!viewMode && onToggleSpan && (
+            <button onClick={onToggleSpan} className="px-2 py-1 text-xs rounded bg-slate-800 text-white">
+              {span === 1 ? 'Full' : span === 2 ? 'Half' : 'Third'}
+            </button>
+          )}
+          <button onClick={onToggle} className="text-sm text-white">
+            {collapsed ? 'Expand' : 'Collapse'}
+          </button>
+        </div>
+      </div>
+      {!collapsed ? <div className="character-section">{children}</div> : <div className="text-white">Section collapsed</div>}
+    </div>
+  )
+}
+
+function IdentitySection({ char, save, viewMode }: { char: Character; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  const updateField = (fieldId: string, patch: Partial<IdentityField>) => {
+    save({ identityFields: char.identityFields.map(field => field.id === fieldId ? { ...field, ...patch } : field) })
+  }
+
+  const addField = () => {
+    save({ identityFields: [...char.identityFields, { id: crypto.randomUUID(), key: `field_${Date.now()}`, label: 'New Field', value: '', removable: true }] })
+  }
+
+  const removeField = (fieldId: string) => {
+    save({ identityFields: char.identityFields.filter(field => field.id !== fieldId) })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        {char.identityFields.map(field => (
+          <div key={field.id} className="grid grid-cols-12 gap-2 items-center">
+            <input value={field.label} disabled={viewMode} onChange={e => updateField(field.id, { label: e.target.value })} className="col-span-4 p-2 border rounded bg-slate-900 text-white" />
+            <input value={field.value} disabled={viewMode} onChange={e => updateField(field.id, { value: e.target.value })} className="col-span-7 p-2 border rounded bg-slate-900 text-white" placeholder="Value" />
+            {!viewMode && field.removable && (
+              <button onClick={() => removeField(field.id)} className="col-span-1 text-red-600">×</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {!viewMode && <button onClick={addField} className="px-3 py-2 bg-slate-800 text-white rounded">+ Add identity field</button>}
+    </div>
+  )
+}
+
+function GallerySection({ char, imageURLs, handleFiles, save, viewMode }: { char: Character; imageURLs: Record<string, string>; handleFiles: (files: FileList | null) => void; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  return (
+    <div className="space-y-3">
+      {!viewMode && <input type="file" multiple onChange={e => handleFiles(e.target.files)} className="mt-2" />}
+      <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+        {char.images.map(ref => (
+          <div key={ref.id} className="border rounded overflow-hidden">
+            {imageURLs[ref.id] ? <img src={imageURLs[ref.id]} alt="" className="w-full h-28 object-cover" /> : <div className="w-full h-28 bg-slate-900" />}
+            <div className="p-2">
+              {viewMode ? (
+                <p className="text-xs text-white">{ref.caption}</p>
+              ) : (
+                <input value={ref.caption || ''} onChange={async e => { const caption = e.target.value; await db.images.update(ref.id, { caption }); const updatedRefs = char.images.map(r => r.id === ref.id ? { ...r, caption } : r); save({ images: updatedRefs }) }} className="w-full text-xs p-1 border rounded bg-slate-900 text-white" placeholder="Caption" />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BiographySection({ char, save, viewMode }: { char: Character; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  return <textarea readOnly={viewMode} value={char.biography} onChange={e => save({ biography: e.target.value })} className="w-full min-h-[160px] p-3 border rounded bg-slate-900 text-white" />
+}
+
+function RelationshipsSection({ char, save, viewMode }: { char: Character; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  const nodes = useMemo(() => [
+    { id: char.id, data: { label: char.name }, position: { x: 200, y: 100 } },
+    ...char.relationships.map((r, i) => ({ id: r.id, data: { label: `${r.name}\n${r.type}` }, position: r.position || { x: 50 + i * 120, y: 250 } }))
+  ], [char])
+
+  const edges = useMemo(() => char.relationships.filter(r => r.connected !== false).map((r) => ({ id: `e-${r.id}`, source: char.id, target: r.id, animated: false, style: { stroke: mapRelationshipToColor(r.type) } })), [char])
+
+  return (
+    <div className="space-y-3">
+      <div style={{ height: 320 }} className="border rounded">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          fitView
+          onNodeDragStop={viewMode ? undefined : (_, node) => {
+            const updatedRels = char.relationships.map(rr => rr.id === node.id ? { ...rr, position: { x: node.position.x, y: node.position.y } } : rr)
+            save({ relationships: updatedRels })
+          }}
+          onPaneClick={viewMode ? undefined : (evt) => {
+            const rect = (evt.target as HTMLElement).getBoundingClientRect()
+            const x = evt.clientX - rect.left
+            const y = evt.clientY - rect.top
+            const id = crypto.randomUUID()
+            const newNode: Relationship = { id, name: 'Node', type: 'Friend', notes: '', position: { x, y }, connected: false }
+            save({ relationships: [...char.relationships, newNode] })
+          }}
+        >
+          <MiniMap />
+          <Controls />
+        </ReactFlow>
+      </div>
+      {!viewMode && <RelationshipEditor relationships={char.relationships} onChange={rels => save({ relationships: rels })} />}
+    </div>
+  )
+}
+
+function TimelineSection({ char, save, viewMode }: { char: Character; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  return <TimelineEditor timeline={char.timeline} onChange={t => save({ timeline: t })} viewMode={viewMode} />
+}
+
+function CustomSectionsSection({ char, save, viewMode }: { char: Character; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  const addSection = () => save({ customSections: [...char.customSections, { id: crypto.randomUUID(), title: 'New Section', content: '', collapsed: false }] })
+
+  const updateSection = (id: string, patch: Partial<Section>) => {
+    save({ customSections: char.customSections.map(section => section.id === id ? { ...section, ...patch } : section) })
+  }
+
+  const removeSection = (id: string) => save({ customSections: char.customSections.filter(section => section.id !== id) })
+
+  return (
+    <div className="space-y-3">
+      {!viewMode && <button onClick={addSection} className="px-3 py-2 bg-slate-800 text-white rounded">+ Add Section</button>}
+      <SortableContext items={char.customSections.map(section => section.id)} strategy={verticalListSortingStrategy}>
+        {char.customSections.map(section => (
+          <CustomSectionCard key={section.id} section={section} viewMode={viewMode} onUpdate={updateSection} onRemove={removeSection} />
+        ))}
+      </SortableContext>
+    </div>
+  )
+}
+
+function CustomSectionCard({ section, viewMode, onUpdate, onRemove }: { section: Section; viewMode: boolean; onUpdate: (id: string, patch: Partial<Section>) => void; onRemove: (id: string) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: section.id })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
+  return (
+    <div ref={setNodeRef} style={style} className="border border-slate-700 rounded p-3 bg-slate-950">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        {!viewMode && <button {...attributes} {...listeners} className="p-1 rounded bg-slate-800 text-white">☰</button>}
+        <input value={section.title} disabled={viewMode} onChange={e => onUpdate(section.id, { title: e.target.value })} className="flex-1 p-2 border rounded bg-slate-900 text-white" />
+        {!viewMode && <button onClick={() => onRemove(section.id)} className="text-red-600">Delete</button>}
+      </div>
+      {!section.collapsed && (
+        <textarea value={section.content} disabled={viewMode} onChange={e => onUpdate(section.id, { content: e.target.value })} className="w-full min-h-[120px] p-2 border rounded bg-slate-900 text-white" />
+      )}
+      {!viewMode && (
+        <button onClick={() => onUpdate(section.id, { collapsed: !section.collapsed })} className="mt-2 text-sm text-white">{section.collapsed ? 'Expand' : 'Collapse'}</button>
+      )}
+      {viewMode && section.collapsed && <p className="text-white">Section collapsed</p>}
+    </div>
+  )
+}
+
+function ThemeSection({ char, save, viewMode }: { char: Character; save: (patch: Partial<Character>) => void; viewMode: boolean }) {
+  const updateTheme = (patch: Partial<ThemeSettings>) => save({ theme: { ...char.theme, ...patch } })
+  const applyPreset = (name: string) => {
+    let presetTheme: ThemeSettings
+    let presetCss: string
+    if (name === 'high-contrast') {
+      presetTheme = { primaryColor: '#ffffff', secondaryColor: '#ffd400', accentColor: '#ffd400', backgroundColor: '#000000', textColor: '#ffffff' }
+      presetCss = `body { background: var(--background-color) !important; color: var(--text-color) !important; }
+.character-card { border: 2px solid var(--accent-color) !important; }
+.character-header { color: var(--primary-color) !important; font-weight: 700; }
+h1, h2, h3, h4 { color: var(--accent-color) !important; }
+`
+    } else if (name === 'paper') {
+      presetTheme = { primaryColor: '#111111', secondaryColor: '#6b7280', accentColor: '#111111', backgroundColor: '#ffffff', textColor: '#111111' }
+      presetCss = `body { background: var(--background-color) !important; color: var(--text-color) !important; }
+.character-card { border: 1px solid var(--secondary-color) !important; }
+.character-header { color: var(--primary-color) !important; font-weight: 700; }
+h1, h2, h3, h4 { color: var(--primary-color) !important; }
+`
+    } else {
+      presetTheme = { primaryColor: '#ffffff', secondaryColor: '#d1d5db', accentColor: '#ffffff', backgroundColor: '#000000', textColor: '#ffffff' }
+      presetCss = `body { background: var(--background-color) !important; color: var(--text-color) !important; }
+.character-card { border: 1px solid var(--secondary-color) !important; border-radius: 0.75rem; padding: 1rem; }
+.character-header { color: var(--primary-color) !important; font-weight: 700; }
+h1, h2, h3, h4 { color: var(--primary-color) !important; }
+.character-section { border-left: 3px solid var(--accent-color) !important; padding-left: 1rem; }
+`
+    }
+    save({ theme: presetTheme, customCss: presetCss })
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-white">Preset:</label>
+        <select disabled={viewMode} onChange={e => applyPreset(e.target.value)} className="p-2 rounded bg-slate-900 text-white border">
+          <option value="dark">Classic Dark</option>
+          <option value="high-contrast">High Contrast</option>
+          <option value="paper">Paper (Light)</option>
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {(['primaryColor', 'secondaryColor', 'accentColor', 'backgroundColor', 'textColor'] as Array<keyof ThemeSettings>).map(key => (
+          <div key={key} className="space-y-1">
+            <label className="block text-sm font-medium text-white">{key.replace(/([A-Z])/g, ' $1')}</label>
+            <input type="color" value={char.theme[key]} disabled={viewMode} onChange={e => updateTheme({ [key]: e.target.value })} className="w-full h-10 rounded border" />
+          </div>
+        ))}
+      </div>
+      <div>
+        <h3 className="font-semibold mb-2 text-white">Custom CSS</h3>
+        <p className="text-xs text-gray-400 mb-2">Available CSS variables: --primary-color, --secondary-color, --accent-color, --background-color, --text-color</p>
+        <textarea value={char.customCss || ''} disabled={viewMode} onChange={e => save({ customCss: e.target.value })} className="w-full min-h-[160px] p-2 border rounded font-mono text-xs" placeholder="body { background: var(--background-color); }" />
+      </div>
+    </div>
+  )
+}
+
+function RelationshipEditor({ relationships, onChange }: { relationships: Relationship[]; onChange: (r: Relationship[]) => void }) {
+  const addConnected = () => onChange([...relationships, { id: crypto.randomUUID(), name: 'New', type: 'Friend', notes: '', connected: true, position: { x: 250, y: 250 } }])
+  const addStandalone = () => onChange([...relationships, { id: crypto.randomUUID(), name: 'Node', type: 'Friend', notes: '', connected: false, position: { x: 120, y: 120 } }])
+  const update = (id: string, patch: Partial<Relationship>) => onChange(relationships.map(r => r.id === id ? { ...r, ...patch } : r))
+  const remove = (id: string) => onChange(relationships.filter(r => r.id !== id))
+  return (
+    <div>
+      <div className="flex gap-2 mb-2">
+        <button onClick={addConnected} className="text-sm text-white bg-slate-800 px-2 py-1 rounded">+ Add Connected</button>
+        <button onClick={addStandalone} className="text-sm text-white bg-slate-800 px-2 py-1 rounded">+ Add Node</button>
+      </div>
+      <div className="space-y-2">
+        {relationships.map(r => (
+          <div key={r.id} className="p-2 border rounded grid grid-cols-12 gap-2 items-center bg-slate-950">
+            <input value={r.name} onChange={e => update(r.id, { name: e.target.value })} className="col-span-4 p-1 border rounded bg-slate-900 text-white" />
+            <select value={r.type} onChange={e => update(r.id, { type: e.target.value })} className="col-span-3 p-1 border rounded bg-slate-900 text-white">
+              <option>Friend</option>
+              <option>Family</option>
+              <option>Rival</option>
+              <option>Romantic</option>
+              <option>Enemy</option>
+            </select>
+            <label className="col-span-3 text-xs text-white flex items-center gap-2"><input type="checkbox" checked={r.connected !== false} onChange={e => update(r.id, { connected: e.target.checked })} /> connected</label>
+            <button className="col-span-2 text-red-600" onClick={() => remove(r.id)}>Delete</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TimelineEditor({ timeline, onChange, viewMode }: { timeline: TimelineEvent[]; onChange: (t: TimelineEvent[]) => void; viewMode: boolean }) {
+  const add = () => onChange([...timeline, { id: crypto.randomUUID(), date: '', title: 'New Event', notes: '' }])
+  const update = (id: string, patch: Partial<TimelineEvent>) => onChange(timeline.map(ev => ev.id === id ? { ...ev, ...patch } : ev))
+  const remove = (id: string) => onChange(timeline.filter(ev => ev.id !== id))
+  return (
+    <div className="space-y-2">
+      {!viewMode && <button onClick={add} className="px-3 py-2 bg-slate-800 text-white rounded">+ Add Event</button>}
+      <div className="space-y-2">
+        {timeline.map(ev => (
+          <div key={ev.id} className="p-2 border rounded grid grid-cols-12 gap-2 items-center bg-slate-950">
+            <input placeholder="Date" value={ev.date} disabled={viewMode} onChange={e => update(ev.id, { date: e.target.value })} className="col-span-3 p-1 border rounded bg-slate-900 text-white" />
+            <input value={ev.title} disabled={viewMode} onChange={e => update(ev.id, { title: e.target.value })} className="col-span-6 p-1 border rounded bg-slate-900 text-white" />
+            {!viewMode && <button className="col-span-3 text-red-600" onClick={() => remove(ev.id)}>Delete</button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
