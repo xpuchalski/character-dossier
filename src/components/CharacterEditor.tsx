@@ -380,7 +380,7 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
 
   return (
     <div className="space-y-4 theme-root" style={wrappedStyle}>
-      <div ref={dossierRef} className="space-y-4 p-1" onDragOver={event => event.preventDefault()} onDragEnter={event => {
+      <div ref={dossierRef} className="space-y-4 p-1 overflow-x-hidden" onDragOver={event => event.preventDefault()} onDragEnter={event => {
         if (event.dataTransfer.types.includes('application/x-character-image')) setIsImageDropActive(true)
       }} onDragLeave={event => {
         if (event.currentTarget === event.target) setIsImageDropActive(false)
@@ -476,7 +476,7 @@ function SortableSection({ id, title, viewMode, collapsed, onToggle, span, onTog
   const spanClass = `col-span-${span ?? 1}`
 
   return (
-    <div ref={setNodeRef} style={style} className={`${spanClass} character-card border border-slate-700 rounded bg-slate-950 p-4 shadow-sm ${isDragging ? 'ring-2 ring-indigo-400 shadow-2xl' : ''}`}>
+    <div ref={setNodeRef} data-pdf-exclude={id === 'theme' ? true : undefined} style={style} className={`${spanClass} character-card border border-slate-700 rounded bg-slate-950 p-4 shadow-sm ${isDragging ? 'ring-2 ring-indigo-400 shadow-2xl' : ''}`}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2">
           {!viewMode && (

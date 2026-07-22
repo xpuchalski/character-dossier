@@ -16,10 +16,6 @@ export default function App() {
       if (!selectedId && all.length) setSelectedId(all[0].id)
     }
     load()
-    const sub = db.characters.hook('creating', () => load())
-    return () => {
-      try { sub.unsubscribe?.() } catch {}
-    }
   }, [])
 
   return (
@@ -28,7 +24,7 @@ export default function App() {
         <CharacterList characters={characters} onSelect={id => { setSelectedId(id); setShowHome(false) }} selectedId={selectedId} onRefresh={async () => setCharacters(await db.characters.toArray())} />
       </Sidebar>
 
-      <main className="flex-1 p-6 overflow-auto h-screen">
+      <main className="flex-1 p-6 overflow-y-auto overflow-x-hidden h-screen">
         {showHome ? <HomePage onStart={() => {
           if (selectedId) setShowHome(false)
         }} /> : selectedId ? (
