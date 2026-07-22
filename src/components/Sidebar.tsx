@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-export default function Sidebar({ children }: { children?: React.ReactNode }) {
+export default function Sidebar({ children, onHome, isHome }: { children?: React.ReactNode; onHome?: () => void; isHome?: boolean }) {
   const [collapsed, setCollapsed] = useState(false)
   return (
     <aside className={`border-r border-slate-700 bg-slate-950 p-2 ${collapsed ? 'w-16' : 'w-80'}`} style={{ height: '100vh', position: 'relative' }}>
@@ -9,7 +9,11 @@ export default function Sidebar({ children }: { children?: React.ReactNode }) {
           <button onClick={() => setCollapsed(!collapsed)} className="p-1 rounded hover:bg-slate-800 text-white">
             {collapsed ? '➤' : '◀'}
           </button>
-          {!collapsed && <h2 className="font-bold text-white">Characters</h2>}
+          {!collapsed && (
+            <button onClick={onHome} className={`font-bold text-white border-0 bg-transparent ${isHome ? 'underline' : ''}`}>
+              Character Dossier Builder
+            </button>
+          )}
         </div>
       </div>
 

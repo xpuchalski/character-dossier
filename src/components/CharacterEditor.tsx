@@ -27,10 +27,10 @@ function normalizeSectionOrder(char: Character): string[] {
   const imageIds = (char.images || []).map(image => dynamicSectionId('image', image.id))
   const customIds = (char.customSections || []).map(section => dynamicSectionId('custom', section.id))
   const dynamicIds = new Set([...imageIds, ...customIds])
-  const order = existing.filter(id => id === 'custom' || (!id.startsWith('image:') && !id.startsWith('custom:')) || dynamicIds.has(id))
+  const order = existing.filter(id => id !== 'custom' && ((!id.startsWith('image:') && !id.startsWith('custom:')) || dynamicIds.has(id)))
   const missing = [...imageIds, ...customIds].filter(id => !order.includes(id))
-  const customIndex = order.indexOf('custom') + 1
-  order.splice(customIndex > 0 ? customIndex : order.length, 0, ...missing)
+  const galleryIndex = order.indexOf('gallery') + 1
+  order.splice(galleryIndex > 0 ? galleryIndex : order.length, 0, ...missing)
   return order.filter((id, index, list) => list.indexOf(id) === index)
 }
 
@@ -68,6 +68,7 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
   const [affectedSections, setAffectedSections] = useState<Set<string>>(new Set())
   const [sectionDirections, setSectionDirections] = useState<Record<string, 'up' | 'down'>>({})
   const dossierRef = useRef<HTMLDivElement>(null)
+  const [isImageDropActive, setIsImageDropActive] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -158,10 +159,10 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
       await db.images.add({ id, characterId: char.id, blob: f, caption: '', createdAt: new Date() })
       addedRefs.push({ id, caption: '' })
     }
-    save({
-      images: [...char.images, ...addedRefs],
-      sectionOrder: [...char.sectionOrder, ...addedRefs.map(ref => dynamicSectionId('image', ref.id))]
-    })
+    const sectionOrder = [...char.sectionOrder]
+    const galleryIndex = sectionOrder.indexOf('gallery')
+    sectionOrder.splice(galleryIndex >= 0 ? galleryIndex + 1 : sectionOrder.length, 0, ...addedRefs.map(ref => dynamicSectionId('image', ref.id)))
+    save({ images: [...char.images, ...addedRefs], sectionOrder })
   }
 
   const importJSON = async (file: File | null) => {
@@ -195,7 +196,8 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
       backgroundColor: char.theme.backgroundColor,
       useCORS: true,
       scale: Math.min(2, window.devicePixelRatio || 1),
-      logging: false
+      logging: false,
+      ignoreElements: node => node.closest('[data-pdf-exclude]') !== null || node.tagName === 'BUTTON' || (node.tagName === 'INPUT' && (node as HTMLInputElement).type === 'file')
     })
     const imageData = canvas.toDataURL('image/png')
     const pdfDoc = await PDFDocument.create()
@@ -293,17 +295,37 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
     if (!char) return
     const { active, over } = event
     if (!over || active.id === over.id) return
+    const rect = over.rect
+    const pointerX = event.activatorEvent?.clientX + (event.delta?.x || 0)
+    const edgeThreshold = rect.left + rect.width * 0.1
+    const dropBefore = pointerX <= edgeThreshold
+    const dropAfter = pointerX >= rect.right - rect.width * 0.1
+    if (!dropBefore && !dropAfter) return
     const oldIndex = char.sectionOrder.indexOf(active.id)
-    const newIndex = char.sectionOrder.indexOf(over.id)
+    let newIndex = char.sectionOrder.indexOf(over.id)
+    if (dropAfter) newIndex += 1
+    if (oldIndex < newIndex) newIndex -= 1
     if (oldIndex !== -1 && newIndex !== -1) {
       const newOrder = arrayMove(char.sectionOrder, oldIndex, newIndex)
-      const { spans: autoSpans, affected } = calculateAutoSpans(active.id, newOrder, char.sectionCols || {})
-      setAffectedSections(affected)
+      const autoSpans = { [active.id]: 2, [over.id]: 2 }
+      setAffectedSections(new Set([active.id, over.id]))
       save({ 
         sectionOrder: newOrder,
         sectionCols: { ...char.sectionCols, ...autoSpans }
       })
     }
+  }
+
+  const addCustomSection = () => {
+    if (!char) return
+    const sectionId = crypto.randomUUID()
+    const galleryIndex = char.sectionOrder.indexOf('gallery')
+    const sectionOrder = [...char.sectionOrder]
+    sectionOrder.splice(galleryIndex >= 0 ? galleryIndex + 1 : sectionOrder.length, 0, dynamicSectionId('custom', sectionId))
+    save({
+      customSections: [...char.customSections, { id: sectionId, title: 'New Section', content: '', collapsed: false }],
+      sectionOrder
+    })
   }
 
   const cycleColSpan = (sectionId: string) => {
@@ -358,10 +380,18 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
 
   return (
     <div className="space-y-4 theme-root" style={wrappedStyle}>
-      <div ref={dossierRef} className="space-y-4 p-1" onDragOver={event => event.preventDefault()} onDrop={event => {
+      <div ref={dossierRef} className="space-y-4 p-1" onDragOver={event => event.preventDefault()} onDragEnter={event => {
+        if (event.dataTransfer.types.includes('application/x-character-image')) setIsImageDropActive(true)
+      }} onDragLeave={event => {
+        if (event.currentTarget === event.target) setIsImageDropActive(false)
+      }} onDrop={event => {
         const imageId = event.dataTransfer.getData('application/x-character-image')
+        setIsImageDropActive(false)
         if (!imageId || char.sectionOrder.includes(dynamicSectionId('image', imageId))) return
-        save({ sectionOrder: [...char.sectionOrder, dynamicSectionId('image', imageId)] })
+        const galleryIndex = char.sectionOrder.indexOf('gallery')
+        const sectionOrder = [...char.sectionOrder]
+        sectionOrder.splice(galleryIndex >= 0 ? galleryIndex + 1 : sectionOrder.length, 0, dynamicSectionId('image', imageId))
+        save({ sectionOrder })
       }}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex-1" />
@@ -377,13 +407,20 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
         </div>
 
         <div className="flex-1 flex justify-end gap-2">
-          <button onClick={exportJSON} className="px-3 py-2 rounded bg-slate-800 text-white">Export JSON</button>
-          <label className="px-3 py-2 rounded bg-slate-800 cursor-pointer text-white">
+          <button data-pdf-exclude onClick={exportJSON} className="px-3 py-2 rounded bg-slate-800 text-white">Export JSON</button>
+          <label data-pdf-exclude className="px-3 py-2 rounded bg-slate-800 cursor-pointer text-white">
             Import JSON
             <input type="file" accept="application/json" className="hidden" onChange={e => importJSON(e.target.files?.[0] ?? null)} />
           </label>
         </div>
       </div>
+
+      <div data-pdf-exclude className="flex items-center justify-between rounded border border-dashed border-slate-700 px-3 py-2">
+        <p className="text-sm text-slate-400">Add cards to build out this dossier.</p>
+        <button onClick={addCustomSection} className="px-3 py-2 text-sm">+ Add custom card</button>
+      </div>
+
+      {isImageDropActive && <div className="pointer-events-none rounded border-2 border-dashed border-indigo-400 bg-indigo-500/10 p-4 text-center text-indigo-200">Drop the image here to add it as a card below Gallery</div>}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleSectionDragStart} onDragCancel={handleSectionDragCancel} onDragEnd={handleSectionDragEnd}>
         <SortableContext items={char.sectionOrder} strategy={verticalListSortingStrategy}>
@@ -411,7 +448,6 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
                     {sectionId === 'biography' && <BiographySection char={char} save={save} viewMode={viewMode} />}
                     {sectionId === 'relationships' && <RelationshipsSection char={char} save={save} viewMode={viewMode} />}
                     {sectionId === 'timeline' && <TimelineSection char={char} save={save} viewMode={viewMode} />}
-                    {sectionId === 'custom' && <CustomSectionsSection char={char} save={save} viewMode={viewMode} />}
                     {sectionId.startsWith('image:') && <ImageCard char={char} imageId={sectionId.slice(6)} imageURL={imageURLs[sectionId.slice(6)]} save={save} viewMode={viewMode} />}
                     {sectionId.startsWith('custom:') && <CustomSectionContent section={char.customSections.find(section => section.id === sectionId.slice(7))} save={patch => save({ customSections: char.customSections.map(section => section.id === sectionId.slice(7) ? { ...section, ...patch } : section) })} remove={() => save({ customSections: char.customSections.filter(section => section.id !== sectionId.slice(7)), sectionOrder: char.sectionOrder.filter(id => id !== sectionId) })} viewMode={viewMode} />}
                     {sectionId === 'theme' && <ThemeSection char={char} save={save} viewMode={viewMode} />}
@@ -422,7 +458,7 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
           </div>
         </SortableContext>
       </DndContext>
-      <div className="pt-4">
+      <div data-pdf-exclude className="pt-4">
         <button onClick={exportPDF} className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Export as PDF</button>
       </div>
       </div>
