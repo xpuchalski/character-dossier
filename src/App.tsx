@@ -42,13 +42,13 @@ function HomePage({ onStart }: { onStart: () => void }) {
     <div className="max-w-4xl space-y-8 py-10">
       <div className="space-y-3">
         <p className="text-sm uppercase tracking-[0.25em] text-indigo-300">Character Dossier Builder</p>
-        <h1 className="text-5xl font-bold">Build a character page that feels like them.</h1>
-        <p className="max-w-2xl text-lg text-slate-300">Organize identity, images, biography, relationships, timelines, and custom notes into a visual dossier you can export as a styled PDF.</p>
+        <h1 className="text-5xl font-bold">A free OC creator website where you have full control.</h1>
+        <p className="max-w-2xl text-lg text-slate-300">Now with added ability to export your character dossiers as PDFs!.</p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <HomeTip title="1. Create a character">Use + New in the sidebar, then fill in identity fields and the character name.</HomeTip>
-        <HomeTip title="2. Arrange the page">Drag the handle on any card. Drop near the left or right edge of another card to create a half-width pair.</HomeTip>
-        <HomeTip title="3. Make it yours">Upload images, drag them from Gallery onto the page, add custom cards, choose a theme, then export JSON or PDF.</HomeTip>
+        <HomeTip title="1. Create a character">Add your own images and put them wherever you want for the best impact.</HomeTip>
+        <HomeTip title="2. Arrange the page">Drag and resize cards to fit your vision.</HomeTip>
+        <HomeTip title="3. Make it yours">Add whatever traits you can dream up to their page with no restrictions.</HomeTip>
       </div>
       <button onClick={onStart} className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Open a character</button>
     </div>
