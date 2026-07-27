@@ -62,7 +62,8 @@ function makeBasicInfo(fields: IdentityField[]) {
 
 export default function CharacterEditor({ id, onChange }: { id: string; onChange?: () => void }) {
   const [char, setChar] = useState<Character | null>(null)
-  const viewMode = false
+  const [viewMode, setViewMode] = useState(false)
+  const [proMode, setProMode] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const [originalSpans, setOriginalSpans] = useState<Record<string, number> | null>(null)
   const [affectedSections, setAffectedSections] = useState<Set<string>>(new Set())
@@ -393,34 +394,51 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
         sectionOrder.splice(galleryIndex >= 0 ? galleryIndex + 1 : sectionOrder.length, 0, dynamicSectionId('image', imageId))
         save({ sectionOrder })
       }}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex-1" />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-900/70 px-3 py-3">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setProMode(!proMode)} className={`rounded-full px-3 py-1 text-sm font-medium ${proMode ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-200'}`}>
+            {proMode ? 'Pro mode: on' : 'Pro mode: off'}
+          </button>
+          <button onClick={() => setViewMode(!viewMode)} className={`rounded-full px-3 py-1 text-sm font-medium ${viewMode ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-200'}`}>
+            {viewMode ? 'View mode: on' : 'View mode: off'}
+          </button>
+        </div>
 
         <div className="flex-1 flex items-center justify-center">
-          <input
-            value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            onBlur={async () => { if (!char) return; if (nameInput !== char.name) await save({ name: nameInput }) }}
-            onKeyDown={async e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() } }}
-            className="text-2xl font-bold p-2 rounded bg-white text-black mx-auto max-w-3xl text-center"
-          />
+          {viewMode ? (
+            <h1 className="text-2xl font-bold text-white text-center">{char.name || 'Untitled character'}</h1>
+          ) : (
+            <input
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onBlur={async () => { if (!char) return; if (nameInput !== char.name) await save({ name: nameInput }) }}
+              onKeyDown={async e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur() } }}
+              className="text-2xl font-bold p-2 rounded bg-white text-black mx-auto max-w-3xl text-center"
+            />
+          )}
         </div>
 
-        <div className="flex-1 flex justify-end gap-2">
-          <button data-pdf-exclude onClick={exportJSON} className="px-3 py-2 rounded bg-slate-800 text-white">Export JSON</button>
-          <label data-pdf-exclude className="px-3 py-2 rounded bg-slate-800 cursor-pointer text-white">
-            Import JSON
-            <input type="file" accept="application/json" className="hidden" onChange={e => importJSON(e.target.files?.[0] ?? null)} />
-          </label>
+        <div className="flex items-center gap-2">
+          {!viewMode && (
+            <>
+              <button data-pdf-exclude onClick={exportJSON} className="px-3 py-2 rounded bg-slate-800 text-white">Export JSON</button>
+              <label data-pdf-exclude className="px-3 py-2 rounded bg-slate-800 cursor-pointer text-white">
+                Import JSON
+                <input type="file" accept="application/json" className="hidden" onChange={e => importJSON(e.target.files?.[0] ?? null)} />
+              </label>
+            </>
+          )}
         </div>
       </div>
 
-      <div data-pdf-exclude className="flex items-center justify-between rounded border border-dashed border-slate-700 px-3 py-2">
-        <p className="text-sm text-slate-400">Add cards to build out this dossier.</p>
-        <button onClick={addCustomSection} className="px-3 py-2 text-sm">+ Add custom card</button>
-      </div>
+      {!viewMode && (
+        <div data-pdf-exclude className="flex items-center justify-between rounded border border-dashed border-slate-700 px-3 py-2">
+          <p className="text-sm text-slate-400">Add cards to build out this dossier.</p>
+          <button onClick={addCustomSection} className="px-3 py-2 text-sm">+ Add custom card</button>
+        </div>
+      )}
 
-      {isImageDropActive && <div className="pointer-events-none rounded border-2 border-dashed border-indigo-400 bg-indigo-500/10 p-4 text-center text-indigo-200">Drop the image here to add it as a card below Gallery</div>}
+      {isImageDropActive && !viewMode && <div className="pointer-events-none rounded border-2 border-dashed border-indigo-400 bg-indigo-500/10 p-4 text-center text-indigo-200">Drop the image here to add it as a card below Gallery</div>}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleSectionDragStart} onDragCancel={handleSectionDragCancel} onDragEnd={handleSectionDragEnd}>
         <SortableContext items={char.sectionOrder} strategy={verticalListSortingStrategy}>
@@ -438,6 +456,7 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
                     id={sectionId}
                     title={sectionId.startsWith('image:') ? 'Image' : sectionId.startsWith('custom:') ? (char.customSections.find(section => section.id === sectionId.slice(7))?.title || 'Custom Section') : sectionLabels[sectionId]}
                     viewMode={viewMode}
+                    proMode={proMode}
                     collapsed={isSectionCollapsed(sectionId)}
                     onToggle={() => toggleSectionCollapse(sectionId)}
                     span={span}
@@ -458,25 +477,29 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
           </div>
         </SortableContext>
       </DndContext>
-      <div data-pdf-exclude className="pt-4">
-        <button onClick={exportPDF} className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Export as PDF</button>
-      </div>
+      {!viewMode && (
+        <div data-pdf-exclude className="pt-4">
+          <button onClick={exportPDF} className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Export as PDF</button>
+        </div>
+      )}
       </div>
     </div>
   )
 }
 
-function SortableSection({ id, title, viewMode, collapsed, onToggle, span, onToggleSpan, children }: { id: string; title: string; viewMode: boolean; collapsed: boolean; onToggle: () => void; span?: number; onToggleSpan?: () => void; children: React.ReactNode }) {
+function SortableSection({ id, title, viewMode, proMode, collapsed, onToggle, span, onToggleSpan, children }: { id: string; title: string; viewMode: boolean; proMode: boolean; collapsed: boolean; onToggle: () => void; span?: number; onToggleSpan?: () => void; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.8 : 1
+    opacity: isDragging ? 0.8 : 1,
+    ...(proMode ? { resize: 'both' as const, overflow: 'auto' as const, maxWidth: '100%' } : {})
   }
   const spanClass = `col-span-${span ?? 1}`
+  const showContent = proMode || !collapsed
 
   return (
-    <div ref={setNodeRef} data-pdf-exclude={id === 'theme' ? true : undefined} style={style} className={`${spanClass} character-card border border-slate-700 rounded bg-slate-950 p-4 shadow-sm ${isDragging ? 'ring-2 ring-indigo-400 shadow-2xl' : ''}`}>
+    <div ref={setNodeRef} data-pdf-exclude={id === 'theme' ? true : undefined} style={style} className={`${spanClass} character-card border border-slate-700 rounded bg-slate-950 p-4 shadow-sm ${isDragging ? 'ring-2 ring-indigo-400 shadow-2xl' : ''} ${proMode ? 'min-w-[12rem]' : ''}`}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <div className="flex items-center gap-2">
           {!viewMode && (
@@ -484,18 +507,20 @@ function SortableSection({ id, title, viewMode, collapsed, onToggle, span, onTog
           )}
           <h2 className="text-xl font-semibold text-white character-header">{title}</h2>
         </div>
-        <div className="flex items-center gap-2">
-          {!viewMode && onToggleSpan && (
-            <button onClick={onToggleSpan} className="px-2 py-1 text-xs rounded bg-slate-800 text-white">
-              {span === 1 ? 'Full' : span === 2 ? 'Half' : 'Third'}
+        {!viewMode && !proMode && (
+          <div className="flex items-center gap-2">
+            {onToggleSpan && (
+              <button onClick={onToggleSpan} className="px-2 py-1 text-xs rounded bg-slate-800 text-white">
+                {span === 1 ? 'Full' : span === 2 ? 'Half' : 'Third'}
+              </button>
+            )}
+            <button onClick={onToggle} className="text-sm text-white">
+              {collapsed ? 'Expand' : 'Collapse'}
             </button>
-          )}
-          <button onClick={onToggle} className="text-sm text-white">
-            {collapsed ? 'Expand' : 'Collapse'}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
-      {!collapsed ? <div className="character-section">{children}</div> : <div className="text-white">Section collapsed</div>}
+      {showContent ? <div className="character-section">{children}</div> : <div className="text-white">Section collapsed</div>}
     </div>
   )
 }
