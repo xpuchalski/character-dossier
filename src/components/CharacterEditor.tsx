@@ -119,38 +119,6 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
   }, [char?.id, char?.sectionOrder.join(',')])
 
   useEffect(() => {
-    if (!dragState) return
-
-    const onMove = (event: PointerEvent) => {
-      setSectionPositions(prev => {
-        const nextPosition = {
-          x: Math.max(0, dragState.startPos.x + event.clientX - dragState.startX),
-          y: Math.max(0, dragState.startPos.y + event.clientY - dragState.startY)
-        }
-        const next = { ...prev, [dragState.sectionId]: nextPosition }
-        return next
-      })
-    }
-
-    const onUp = () => {
-      setSectionPositions(prev => {
-        const nextPosition = prev[dragState.sectionId] || dragState.startPos
-        const next = { ...prev, [dragState.sectionId]: nextPosition }
-        void save({ sectionPositions: next })
-        return next
-      })
-      setDragState(null)
-    }
-
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    return () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-  }, [dragState])
-
-  useEffect(() => {
     const styleId = 'character-custom-css'
     let style = document.getElementById(styleId) as HTMLStyleElement | null
     if (!style) {
@@ -188,6 +156,20 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
     setChar(next)
     onChange?.()
   }
+
+  useEffect(() => {
+    if (!dragState) return
+    const onMove = (event: PointerEvent) => moveSectionDrag(event.clientX, event.clientY)
+    const onUp = () => endSectionDrag()
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [dragState])
 
   const [imageURLs, setImageURLs] = useState<Record<string, string>>({})
 
@@ -435,7 +417,28 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
     setDragState({ sectionId, startX: clientX, startY: clientY, startPos: current })
   }
 
+  const moveSectionDrag = (clientX: number, clientY: number) => {
+    if (!dragState) return
+    const nextPosition = {
+      x: Math.max(0, dragState.startPos.x + clientX - dragState.startX),
+      y: Math.max(0, dragState.startPos.y + clientY - dragState.startY)
+    }
+    setSectionPositions(prev => ({ ...prev, [dragState.sectionId]: nextPosition }))
+  }
+
+  const endSectionDrag = () => {
+    if (!dragState || !char) return
+    setSectionPositions(prev => {
+      const nextPosition = prev[dragState.sectionId] || dragState.startPos
+      const next = { ...prev, [dragState.sectionId]: nextPosition }
+      void save({ sectionPositions: next })
+      return next
+    })
+    setDragState(null)
+  }
+
   const handleSectionResize = (sectionId: string, width: number, height: number) => {
+    if (width < 280 || height < 180) return
     const nextSize = { width, height }
     setSectionSizes(prev => {
       const next = { ...prev, [sectionId]: nextSize }
@@ -514,7 +517,8 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
         <div className="relative min-h-[70vh] overflow-hidden rounded border border-slate-800/70 p-2">
           {char.sectionOrder.filter(sectionId => !(viewMode && sectionId === 'theme')).map((sectionId, index) => {
             const position = sectionPositions[sectionId] || { x: 24 + (index % 2) * 340, y: 24 + Math.floor(index / 2) * 280 }
-            const size = sectionSizes[sectionId] || { width: 360, height: index === 0 ? 220 : 240 }
+            const baseSize = sectionSizes[sectionId] || { width: 360, height: index === 0 ? 220 : 240 }
+            const size = { width: Math.max(320, baseSize.width), height: Math.max(220, baseSize.height) }
             return (
               <div key={sectionId} style={{ position: 'absolute', left: position.x, top: position.y, width: size.width, height: size.height, zIndex: dragState?.sectionId === sectionId ? 20 : 10 }}>
                 <ProSectionCard
@@ -523,6 +527,8 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
                   collapsed={isSectionCollapsed(sectionId)}
                   onToggle={() => toggleSectionCollapse(sectionId)}
                   onDragStart={(clientX, clientY) => startSectionDrag(sectionId, clientX, clientY)}
+                  onDragMove={(clientX, clientY) => moveSectionDrag(clientX, clientY)}
+                  onDragEnd={endSectionDrag}
                   onResize={(width, height) => handleSectionResize(sectionId, width, height)}
                 >
                   {sectionId === 'identity' && <IdentitySection char={char} save={save} viewMode={viewMode} />}
@@ -625,7 +631,7 @@ function SortableSection({ id, title, viewMode, proMode, collapsed, onToggle, sp
   )
 }
 
-function ProSectionCard({ title, viewMode, collapsed, onToggle, onDragStart, onResize, children }: { title: string; viewMode: boolean; collapsed: boolean; onToggle: () => void; onDragStart?: (clientX: number, clientY: number) => void; onResize?: (width: number, height: number) => void; children: React.ReactNode }) {
+function ProSectionCard({ title, viewMode, collapsed, onToggle, onDragStart, onDragMove, onDragEnd, onResize, children }: { title: string; viewMode: boolean; collapsed: boolean; onToggle: () => void; onDragStart?: (clientX: number, clientY: number) => void; onDragMove?: (clientX: number, clientY: number) => void; onDragEnd?: () => void; onResize?: (width: number, height: number) => void; children: React.ReactNode }) {
   const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -634,7 +640,10 @@ function ProSectionCard({ title, viewMode, collapsed, onToggle, onDragStart, onR
     const observer = new ResizeObserver(entries => {
       const entry = entries[0]
       if (!entry) return
-      onResize(Math.round(entry.contentRect.width), Math.round(entry.contentRect.height))
+      const width = Math.round(entry.contentRect.width)
+      const height = Math.round(entry.contentRect.height)
+      if (width < 80 || height < 80) return
+      onResize(width, height)
     })
     observer.observe(element)
     return () => observer.disconnect()
@@ -642,11 +651,20 @@ function ProSectionCard({ title, viewMode, collapsed, onToggle, onDragStart, onR
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('button, input, textarea, select')) return
+    event.preventDefault()
     onDragStart?.(event.clientX, event.clientY)
   }
 
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    onDragMove?.(event.clientX, event.clientY)
+  }
+
+  const handlePointerUp = () => {
+    onDragEnd?.()
+  }
+
   return (
-    <div ref={cardRef} data-pdf-exclude={title === 'Appearance / CSS Editor' ? true : undefined} onPointerDown={handlePointerDown} className="h-full w-full cursor-grab rounded border border-slate-700 bg-slate-950 p-4 shadow-sm overflow-auto" style={{ resize: 'both' as const }}>
+    <div ref={cardRef} data-pdf-exclude={title === 'Appearance / CSS Editor' ? true : undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} className="h-full w-full cursor-grab rounded border border-slate-700 bg-slate-950 p-4 shadow-sm overflow-auto" style={{ resize: 'both' as const, minWidth: 320, minHeight: 220 }}>
       <div className="flex items-center justify-between mb-3 gap-2">
         <h2 className="text-xl font-semibold text-white character-header">{title}</h2>
         {!viewMode && (
