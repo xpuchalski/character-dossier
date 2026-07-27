@@ -664,7 +664,8 @@ function ProSectionCard({ title, viewMode, collapsed, onToggle, onDragStart, onD
   }
 
   return (
-    <div ref={cardRef} data-pdf-exclude={title === 'Appearance / CSS Editor' ? true : undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} className="h-full w-full cursor-grab rounded border border-slate-700 bg-slate-950 p-4 shadow-sm overflow-auto" style={{ resize: 'both' as const, minWidth: 320, minHeight: 220 }}>
+    <div ref={cardRef} data-pdf-exclude={title === 'Appearance / CSS Editor' ? true : undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} className="relative h-full w-full cursor-grab rounded border border-slate-700 bg-slate-950 p-4 shadow-sm overflow-auto" style={{ resize: 'both' as const, minWidth: 320, minHeight: 220 }}>
+      <div className="absolute bottom-2 right-2 z-10 h-4 w-4 cursor-se-resize rounded-sm border border-slate-400/70 bg-slate-800/80" />
       <div className="flex items-center justify-between mb-3 gap-2">
         <h2 className="text-xl font-semibold text-white character-header">{title}</h2>
         {!viewMode && (
@@ -734,7 +735,7 @@ function GallerySection({ char, imageURLs, handleFiles, save, viewMode }: { char
         {char.images.map(ref => (
           <div key={ref.id} className="relative border rounded overflow-hidden bg-slate-900">
             {imageURLs[ref.id] ? (
-              <img draggable={!viewMode} onDragStart={event => event.dataTransfer.setData('application/x-character-image', ref.id)} onClick={() => openLightbox(ref.id)} src={imageURLs[ref.id]} alt={ref.caption || ''} className="w-full h-28 object-cover cursor-grab active:cursor-grabbing" />
+              <img draggable={!viewMode} onDragStart={event => event.dataTransfer.setData('application/x-character-image', ref.id)} onClick={() => openLightbox(ref.id)} src={imageURLs[ref.id]} alt={ref.caption || ''} className="w-full h-28 object-cover cursor-zoom-in active:cursor-zoom-in" />
             ) : (
               <div className="w-full h-28 bg-slate-900" />
             )}
@@ -755,16 +756,16 @@ function GallerySection({ char, imageURLs, handleFiles, save, viewMode }: { char
       </div>
 
       {lightboxId && (
-        <div onClick={closeLightbox} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div onClick={e => e.stopPropagation()} className="max-w-4xl max-h-[90vh] w-full">
-            <div className="flex justify-between items-start mb-2">
-              <button onClick={closeLightbox} className="text-white bg-slate-800 px-3 py-1 rounded">Close</button>
-              {!viewMode && <button onClick={() => removeImage(lightboxId)} className="text-white bg-red-600 px-3 py-1 rounded">Remove from gallery</button>}
+        <div onClick={closeLightbox} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4">
+          <div onClick={e => e.stopPropagation()} className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-xl border border-slate-700 bg-slate-950/95 p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <button onClick={closeLightbox} className="rounded bg-slate-800 px-3 py-1 text-white">Close</button>
+              {!viewMode && <button onClick={() => removeImage(lightboxId)} className="rounded bg-red-600 px-3 py-1 text-white">Remove from gallery</button>}
             </div>
-            <div className="w-full h-full flex items-center justify-center">
-              {imageURLs[lightboxId] ? <img src={imageURLs[lightboxId]} alt="" className="max-h-[80vh] max-w-full object-contain rounded" /> : <div className="w-full h-96 bg-slate-900" />}
+            <div className="flex flex-1 items-center justify-center overflow-auto">
+              {imageURLs[lightboxId] ? <img src={imageURLs[lightboxId]} alt="" className="max-h-[75vh] max-w-full rounded object-contain" /> : <div className="h-96 w-full rounded bg-slate-900" />}
             </div>
-            <div className="mt-2 text-white text-sm">
+            <div className="mt-3 text-sm text-slate-300">
               {char.images.find(r => r.id === lightboxId)?.caption}
             </div>
           </div>
