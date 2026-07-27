@@ -43,7 +43,8 @@ function HomePage({ onStart }: { onStart: () => void }) {
       <div className="space-y-3">
         <p className="text-sm uppercase tracking-[0.25em] text-indigo-300">Character Dossier Builder</p>
         <h1 className="text-5xl font-bold">A free OC creator website where you have full control.</h1>
-        <p className="max-w-2xl text-lg text-slate-300">Now with added ability to export your character dossiers as PDFs!.</p>
+        <p className="max-w-2xl text-lg text-slate-300">Now with added ability to export your character dossiers as PDFs!. <br>
+        </br>Now with added pro mode! move and resize your cards with no restictions at all!</p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <HomeTip title="1. Create a character">Add your own images and put them wherever you want for the best impact.</HomeTip>
