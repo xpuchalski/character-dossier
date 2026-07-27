@@ -70,6 +70,7 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
   const [sectionSizes, setSectionSizes] = useState<Record<string, { width: number; height: number }>>({})
   const [dragState, setDragState] = useState<{ sectionId: string; startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const [resizeState, setResizeState] = useState<{ sectionId: string; startX: number; startY: number; startSize: { width: number; height: number } } | null>(null)
+  const [canvasHeight, setCanvasHeight] = useState(900)
   const [affectedSections, setAffectedSections] = useState<Set<string>>(new Set())
   const [sectionDirections, setSectionDirections] = useState<Record<string, 'up' | 'down'>>({})
   const dossierRef = useRef<HTMLDivElement>(null)
@@ -117,6 +118,11 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
       }
     })
     setSectionSizes(nextSizes)
+    const maxBottom = Object.entries(nextPositions).reduce((max, [sectionId, position]) => {
+      const currentSize = nextSizes[sectionId] || { width: 360, height: 240 }
+      return Math.max(max, position.y + currentSize.height + 40)
+    }, 700)
+    setCanvasHeight(maxBottom)
   }, [char?.id, char?.sectionOrder.join(',')])
 
   useEffect(() => {
@@ -430,7 +436,15 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
       x: Math.max(0, dragState.startPos.x + clientX - dragState.startX),
       y: Math.max(0, dragState.startPos.y + clientY - dragState.startY)
     }
-    setSectionPositions(prev => ({ ...prev, [dragState.sectionId]: nextPosition }))
+    setSectionPositions(prev => {
+      const next = { ...prev, [dragState.sectionId]: nextPosition }
+      const maxBottom = Object.entries(next).reduce((max, [sectionId, position]) => {
+        const currentSize = sectionSizes[sectionId] || { width: 360, height: 240 }
+        return Math.max(max, position.y + currentSize.height + 40)
+      }, 700)
+      setCanvasHeight(maxBottom)
+      return next
+    })
   }
 
   const endSectionDrag = () => {
@@ -454,7 +468,15 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
       width: Math.max(320, resizeState.startSize.width + clientX - resizeState.startX),
       height: Math.max(220, resizeState.startSize.height + clientY - resizeState.startY)
     }
-    setSectionSizes(prev => ({ ...prev, [resizeState.sectionId]: nextSize }))
+    setSectionSizes(prev => {
+      const next = { ...prev, [resizeState.sectionId]: nextSize }
+      const maxBottom = Object.entries({ ...sectionPositions, [resizeState.sectionId]: { ...sectionPositions[resizeState.sectionId], y: sectionPositions[resizeState.sectionId]?.y ?? 24 } }).reduce((max, [sectionId, position]) => {
+        const currentSize = next[sectionId] || { width: 360, height: 240 }
+        return Math.max(max, position.y + currentSize.height + 40)
+      }, 700)
+      setCanvasHeight(maxBottom)
+      return next
+    })
   }
 
   const endSectionResize = () => {
@@ -534,7 +556,7 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
       {isImageDropActive && !viewMode && <div className="pointer-events-none rounded border-2 border-dashed border-indigo-400 bg-indigo-500/10 p-4 text-center text-indigo-200">Drop the image here to add it as a card below Gallery</div>}
 
       {proMode ? (
-        <div className="relative min-h-[70vh] overflow-hidden rounded border border-slate-800/70 p-2">
+        <div className="relative overflow-hidden rounded border border-slate-800/70 p-2" style={{ minHeight: '70vh', height: canvasHeight }}>
           {char.sectionOrder.filter(sectionId => !(viewMode && sectionId === 'theme')).map((sectionId, index) => {
             const position = sectionPositions[sectionId] || { x: 24 + (index % 2) * 340, y: 24 + Math.floor(index / 2) * 280 }
             const baseSize = sectionSizes[sectionId] || { width: 360, height: index === 0 ? 220 : 240 }
