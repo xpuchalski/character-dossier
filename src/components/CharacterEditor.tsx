@@ -66,6 +66,9 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
   const [proMode, setProMode] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const [originalSpans, setOriginalSpans] = useState<Record<string, number> | null>(null)
+  const [sectionPositions, setSectionPositions] = useState<Record<string, { x: number; y: number }>>({})
+  const [sectionSizes, setSectionSizes] = useState<Record<string, { width: number; height: number }>>({})
+  const [dragState, setDragState] = useState<{ sectionId: string; startX: number; startY: number; startPos: { x: number; y: number } } | null>(null)
   const [affectedSections, setAffectedSections] = useState<Set<string>>(new Set())
   const [sectionDirections, setSectionDirections] = useState<Record<string, 'up' | 'down'>>({})
   const dossierRef = useRef<HTMLDivElement>(null)
@@ -81,6 +84,8 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
         sectionOrder: normalizeSectionOrder(c),
         sectionCollapsed: c.sectionCollapsed || {},
         sectionCols: c.sectionCols || {},
+        sectionPositions: c.sectionPositions || {},
+        sectionSizes: c.sectionSizes || {},
         theme: c.theme || DEFAULT_THEME,
         identityFields: c.identityFields || defaultIdentityFields(),
         customCss: c.customCss || DEFAULT_CUSTOM_CSS
@@ -93,6 +98,57 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
     if (!char) return
     setNameInput(char.name || '')
   }, [char?.name])
+
+  useEffect(() => {
+    if (!char) return
+    const nextPositions: Record<string, { x: number; y: number }> = { ...(char.sectionPositions || {}) }
+    char.sectionOrder.forEach((sectionId, index) => {
+      if (!nextPositions[sectionId]) {
+        nextPositions[sectionId] = { x: 24 + (index % 2) * 340, y: 24 + Math.floor(index / 2) * 280 }
+      }
+    })
+    setSectionPositions(nextPositions)
+
+    const nextSizes: Record<string, { width: number; height: number }> = { ...(char.sectionSizes || {}) }
+    char.sectionOrder.forEach((sectionId, index) => {
+      if (!nextSizes[sectionId]) {
+        nextSizes[sectionId] = { width: 360, height: index === 0 ? 220 : 240 }
+      }
+    })
+    setSectionSizes(nextSizes)
+  }, [char?.id, char?.sectionOrder.join(',')])
+
+  useEffect(() => {
+    if (!dragState) return
+
+    const onMove = (event: PointerEvent) => {
+      setSectionPositions(prev => {
+        const nextPosition = {
+          x: Math.max(0, dragState.startPos.x + event.clientX - dragState.startX),
+          y: Math.max(0, dragState.startPos.y + event.clientY - dragState.startY)
+        }
+        const next = { ...prev, [dragState.sectionId]: nextPosition }
+        return next
+      })
+    }
+
+    const onUp = () => {
+      setSectionPositions(prev => {
+        const nextPosition = prev[dragState.sectionId] || dragState.startPos
+        const next = { ...prev, [dragState.sectionId]: nextPosition }
+        void save({ sectionPositions: next })
+        return next
+      })
+      setDragState(null)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [dragState])
 
   useEffect(() => {
     const styleId = 'character-custom-css'
@@ -374,6 +430,20 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
 
   const isSectionCollapsed = (id: string) => char.sectionCollapsed?.[id] ?? false
 
+  const startSectionDrag = (sectionId: string, clientX: number, clientY: number) => {
+    const current = sectionPositions[sectionId] || { x: 24, y: 24 }
+    setDragState({ sectionId, startX: clientX, startY: clientY, startPos: current })
+  }
+
+  const handleSectionResize = (sectionId: string, width: number, height: number) => {
+    const nextSize = { width, height }
+    setSectionSizes(prev => {
+      const next = { ...prev, [sectionId]: nextSize }
+      void save({ sectionSizes: next })
+      return next
+    })
+  }
+
   const wrappedStyle = {
     backgroundColor: char.theme.backgroundColor,
     color: char.theme.textColor
@@ -440,43 +510,73 @@ export default function CharacterEditor({ id, onChange }: { id: string; onChange
 
       {isImageDropActive && !viewMode && <div className="pointer-events-none rounded border-2 border-dashed border-indigo-400 bg-indigo-500/10 p-4 text-center text-indigo-200">Drop the image here to add it as a card below Gallery</div>}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleSectionDragStart} onDragCancel={handleSectionDragCancel} onDragEnd={handleSectionDragEnd}>
-        <SortableContext items={char.sectionOrder} strategy={verticalListSortingStrategy}>
-          <div className="flex flex-wrap gap-4">
-            {char.sectionOrder.map(sectionId => {
-              const span = Math.max(1, Math.min(3, char.sectionCols?.[sectionId] ?? 1))
-              const widthStyle = span === 1 
-                ? { width: '100%' } 
-                : span === 2 
-                ? { width: 'calc(50% - 0.5rem)' }
-                : { width: 'calc(33.333% - 0.667rem)' }
-              return (
-                <div key={sectionId} style={widthStyle}>
-                  <SortableSection
-                    id={sectionId}
-                    title={sectionId.startsWith('image:') ? 'Image' : sectionId.startsWith('custom:') ? (char.customSections.find(section => section.id === sectionId.slice(7))?.title || 'Custom Section') : sectionLabels[sectionId]}
-                    viewMode={viewMode}
-                    proMode={proMode}
-                    collapsed={isSectionCollapsed(sectionId)}
-                    onToggle={() => toggleSectionCollapse(sectionId)}
-                    span={span}
-                    onToggleSpan={() => cycleColSpan(sectionId)}
-                  >
-                    {sectionId === 'identity' && <IdentitySection char={char} save={save} viewMode={viewMode} />}
-                    {sectionId === 'gallery' && <GallerySection char={char} imageURLs={imageURLs} handleFiles={handleFiles} save={save} viewMode={viewMode} />}
-                    {sectionId === 'biography' && <BiographySection char={char} save={save} viewMode={viewMode} />}
-                    {sectionId === 'relationships' && <RelationshipsSection char={char} save={save} viewMode={viewMode} />}
-                    {sectionId === 'timeline' && <TimelineSection char={char} save={save} viewMode={viewMode} />}
-                    {sectionId.startsWith('image:') && <ImageCard char={char} imageId={sectionId.slice(6)} imageURL={imageURLs[sectionId.slice(6)]} save={save} viewMode={viewMode} />}
-                    {sectionId.startsWith('custom:') && <CustomSectionContent section={char.customSections.find(section => section.id === sectionId.slice(7))} save={patch => save({ customSections: char.customSections.map(section => section.id === sectionId.slice(7) ? { ...section, ...patch } : section) })} remove={() => save({ customSections: char.customSections.filter(section => section.id !== sectionId.slice(7)), sectionOrder: char.sectionOrder.filter(id => id !== sectionId) })} viewMode={viewMode} />}
-                    {sectionId === 'theme' && <ThemeSection char={char} save={save} viewMode={viewMode} />}
-                  </SortableSection>
-                </div>
-              )
-            })}
-          </div>
-        </SortableContext>
-      </DndContext>
+      {proMode ? (
+        <div className="relative min-h-[70vh] overflow-hidden rounded border border-slate-800/70 p-2">
+          {char.sectionOrder.filter(sectionId => !(viewMode && sectionId === 'theme')).map((sectionId, index) => {
+            const position = sectionPositions[sectionId] || { x: 24 + (index % 2) * 340, y: 24 + Math.floor(index / 2) * 280 }
+            const size = sectionSizes[sectionId] || { width: 360, height: index === 0 ? 220 : 240 }
+            return (
+              <div key={sectionId} style={{ position: 'absolute', left: position.x, top: position.y, width: size.width, height: size.height, zIndex: dragState?.sectionId === sectionId ? 20 : 10 }}>
+                <ProSectionCard
+                  title={sectionId.startsWith('image:') ? 'Image' : sectionId.startsWith('custom:') ? (char.customSections.find(section => section.id === sectionId.slice(7))?.title || 'Custom Section') : sectionLabels[sectionId]}
+                  viewMode={viewMode}
+                  collapsed={isSectionCollapsed(sectionId)}
+                  onToggle={() => toggleSectionCollapse(sectionId)}
+                  onDragStart={(clientX, clientY) => startSectionDrag(sectionId, clientX, clientY)}
+                  onResize={(width, height) => handleSectionResize(sectionId, width, height)}
+                >
+                  {sectionId === 'identity' && <IdentitySection char={char} save={save} viewMode={viewMode} />}
+                  {sectionId === 'gallery' && <GallerySection char={char} imageURLs={imageURLs} handleFiles={handleFiles} save={save} viewMode={viewMode} />}
+                  {sectionId === 'biography' && <BiographySection char={char} save={save} viewMode={viewMode} />}
+                  {sectionId === 'relationships' && <RelationshipsSection char={char} save={save} viewMode={viewMode} />}
+                  {sectionId === 'timeline' && <TimelineSection char={char} save={save} viewMode={viewMode} />}
+                  {sectionId.startsWith('image:') && <ImageCard char={char} imageId={sectionId.slice(6)} imageURL={imageURLs[sectionId.slice(6)]} save={save} viewMode={viewMode} />}
+                  {sectionId.startsWith('custom:') && <CustomSectionContent section={char.customSections.find(section => section.id === sectionId.slice(7))} save={patch => save({ customSections: char.customSections.map(section => section.id === sectionId.slice(7) ? { ...section, ...patch } : section) })} remove={() => save({ customSections: char.customSections.filter(section => section.id !== sectionId.slice(7)), sectionOrder: char.sectionOrder.filter(id => id !== sectionId) })} viewMode={viewMode} />}
+                  {sectionId === 'theme' && <ThemeSection char={char} save={save} viewMode={viewMode} />}
+                </ProSectionCard>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleSectionDragStart} onDragCancel={handleSectionDragCancel} onDragEnd={handleSectionDragEnd}>
+          <SortableContext items={char.sectionOrder} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-wrap gap-4">
+              {char.sectionOrder.filter(sectionId => !(viewMode && sectionId === 'theme')).map(sectionId => {
+                const span = Math.max(1, Math.min(3, char.sectionCols?.[sectionId] ?? 1))
+                const widthStyle = span === 1 
+                  ? { width: '100%' } 
+                  : span === 2 
+                  ? { width: 'calc(50% - 0.5rem)' }
+                  : { width: 'calc(33.333% - 0.667rem)' }
+                return (
+                  <div key={sectionId} style={widthStyle}>
+                    <SortableSection
+                      id={sectionId}
+                      title={sectionId.startsWith('image:') ? 'Image' : sectionId.startsWith('custom:') ? (char.customSections.find(section => section.id === sectionId.slice(7))?.title || 'Custom Section') : sectionLabels[sectionId]}
+                      viewMode={viewMode}
+                      proMode={proMode}
+                      collapsed={isSectionCollapsed(sectionId)}
+                      onToggle={() => toggleSectionCollapse(sectionId)}
+                      span={span}
+                      onToggleSpan={() => cycleColSpan(sectionId)}
+                    >
+                      {sectionId === 'identity' && <IdentitySection char={char} save={save} viewMode={viewMode} />}
+                      {sectionId === 'gallery' && <GallerySection char={char} imageURLs={imageURLs} handleFiles={handleFiles} save={save} viewMode={viewMode} />}
+                      {sectionId === 'biography' && <BiographySection char={char} save={save} viewMode={viewMode} />}
+                      {sectionId === 'relationships' && <RelationshipsSection char={char} save={save} viewMode={viewMode} />}
+                      {sectionId === 'timeline' && <TimelineSection char={char} save={save} viewMode={viewMode} />}
+                      {sectionId.startsWith('image:') && <ImageCard char={char} imageId={sectionId.slice(6)} imageURL={imageURLs[sectionId.slice(6)]} save={save} viewMode={viewMode} />}
+                      {sectionId.startsWith('custom:') && <CustomSectionContent section={char.customSections.find(section => section.id === sectionId.slice(7))} save={patch => save({ customSections: char.customSections.map(section => section.id === sectionId.slice(7) ? { ...section, ...patch } : section) })} remove={() => save({ customSections: char.customSections.filter(section => section.id !== sectionId.slice(7)), sectionOrder: char.sectionOrder.filter(id => id !== sectionId) })} viewMode={viewMode} />}
+                      {sectionId === 'theme' && <ThemeSection char={char} save={save} viewMode={viewMode} />}
+                    </SortableSection>
+                  </div>
+                )
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
       {!viewMode && (
         <div data-pdf-exclude className="pt-4">
           <button onClick={exportPDF} className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Export as PDF</button>
@@ -521,6 +621,41 @@ function SortableSection({ id, title, viewMode, proMode, collapsed, onToggle, sp
         )}
       </div>
       {showContent ? <div className="character-section">{children}</div> : <div className="text-white">Section collapsed</div>}
+    </div>
+  )
+}
+
+function ProSectionCard({ title, viewMode, collapsed, onToggle, onDragStart, onResize, children }: { title: string; viewMode: boolean; collapsed: boolean; onToggle: () => void; onDragStart?: (clientX: number, clientY: number) => void; onResize?: (width: number, height: number) => void; children: React.ReactNode }) {
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const element = cardRef.current
+    if (!element || !onResize) return
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0]
+      if (!entry) return
+      onResize(Math.round(entry.contentRect.width), Math.round(entry.contentRect.height))
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [onResize])
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button, input, textarea, select')) return
+    onDragStart?.(event.clientX, event.clientY)
+  }
+
+  return (
+    <div ref={cardRef} data-pdf-exclude={title === 'Appearance / CSS Editor' ? true : undefined} onPointerDown={handlePointerDown} className="h-full w-full cursor-grab rounded border border-slate-700 bg-slate-950 p-4 shadow-sm overflow-auto" style={{ resize: 'both' as const }}>
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <h2 className="text-xl font-semibold text-white character-header">{title}</h2>
+        {!viewMode && (
+          <button onClick={onToggle} className="text-sm text-white">
+            {collapsed ? 'Expand' : 'Collapse'}
+          </button>
+        )}
+      </div>
+      {!collapsed ? <div className="character-section">{children}</div> : <div className="text-white">Section collapsed</div>}
     </div>
   )
 }

@@ -67,6 +67,8 @@ export interface Character {
   sectionOrder: string[]
   sectionCollapsed?: Record<string, boolean>
   sectionCols?: Record<string, number>
+  sectionPositions?: Record<string, { x: number; y: number }>
+  sectionSizes?: Record<string, { width: number; height: number }>
   theme: ThemeSettings
   customCss: string
   createdAt: Date
@@ -79,7 +81,7 @@ class CharacterDB extends Dexie {
 
   constructor() {
     super('CharacterDossierDB')
-    this.version(3).stores({
+    this.version(4).stores({
       characters: '&id,name,updatedAt',
       images: '&id,characterId,createdAt'
     })
